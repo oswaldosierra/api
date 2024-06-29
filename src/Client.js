@@ -929,20 +929,91 @@ class Client extends EventEmitter {
             );
         }
 
-        const newMessage = await this.pupPage.evaluate(async (chatId, message, options, sendSeen) => {
-            const chatWid = window.Store.WidFactory.createWid(chatId);
-            const chat = await window.Store.Chat.find(chatWid);
+        let linkPreviewData = null;
+        if (internalOptions.linkPreview) {
+            linkPreviewData = await this.pupPage.evaluate(async (content) => {
+                const link = window.Store.Validators.findLink(content);
+                if (link) {
+                    let preview = await window.Store.LinkPreview.getLinkPreview(link);
+                    if (preview && preview.data) {
+                        preview = preview.data;
+                        preview.preview = true;
+                        preview.subtype = 'url';
+                        return preview;
+                    }
+                }
 
+                return null;
+            }, content);
+        }
 
-            if (sendSeen) {
+        if (sendSeen && false) {
+            await this.pupPage.evaluate(async (chatId) => {
                 await window.WWebJS.sendSeen(chatId);
+            }, chatId);
+        }
+
+        let intentos = 0;
+        let maxIntentos = 2;
+        const errorCapturado = 'Protocol error (Runtime.callFunctionOn): Promise was collected';
+
+        while (intentos < maxIntentos) {
+            const newId = await this.pupPage.evaluate(async () => {
+                return await window.Store.MsgKey.newId();
+            });
+
+            try {
+                const newMessage = await this.pupPage.evaluate(async (chatId, message, options, sendSeen, linkPreviewData, newId) => {
+                    const chatWid = window.Store.WidFactory.createWid(chatId);
+                    const chat = await window.Store.Chat.find(chatWid);
+
+                    const msg = await window.WWebJS.sendMessage(chat, message, options, sendSeen, linkPreviewData, newId);
+                    return window.WWebJS.getMessageModel(msg);
+                }, chatId, content, internalOptions, sendSeen, linkPreviewData, newId);
+
+                return new Message(this, newMessage);
+
+            } catch (error) {
+                if (error.message.includes(errorCapturado)) {
+                    // Si se produce el error esperado, incrementamos el número de intentos
+                    intentos++;
+                    console.log(`Intento ${intentos} de ${maxIntentos}`);
+
+                    // Verificar si el mensaje ya fue enviado y recuperar su contenido.
+                    await (new Promise((resolve) => {
+                        setTimeout(resolve, 2000);
+                    }));
+
+                    const chat = await this.getChatById(chatId);
+                    const messages = await chat.fetchMessages({ limit: 5, fromMe: true });
+                    const msg = messages.find((m) => m.id.id == newId);
+                    if (msg) {
+                        console.log('Mensaje enviado, no se hará ningún reintento.', msg);
+                        return msg;
+                    }
+                } else {
+                    // Si se produce otro error, lo lanzamos
+                    throw error;
+                }
             }
+        }
 
-            const msg = await window.WWebJS.sendMessage(chat, message, options, sendSeen);
-            return window.WWebJS.getMessageModel(msg);
-        }, chatId, content, internalOptions, sendSeen);
+        throw new Error(errorCapturado);
 
-        return new Message(this, newMessage);
+        // const newMessage = await this.pupPage.evaluate(async (chatId, message, options, sendSeen) => {
+        //     const chatWid = window.Store.WidFactory.createWid(chatId);
+        //     const chat = await window.Store.Chat.find(chatWid);
+
+
+        //     if (sendSeen) {
+        //         await window.WWebJS.sendSeen(chatId);
+        //     }
+
+        //     const msg = await window.WWebJS.sendMessage(chat, message, options, sendSeen);
+        //     return window.WWebJS.getMessageModel(msg);
+        // }, chatId, content, internalOptions, sendSeen);
+
+        // return new Message(this, newMessage);
     }
     
     /**

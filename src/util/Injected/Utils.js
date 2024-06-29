@@ -24,7 +24,7 @@ exports.LoadUtils = () => {
 
     };
 
-    window.WWebJS.sendMessage = async (chat, content, options = {}) => {
+    window.WWebJS.sendMessage = async (chat, content, options = {}, sendSeen, linkPreviewData, newId) => {
         let attOptions = {};
         if (options.attachment) {
             attOptions = options.sendMediaAsSticker
@@ -44,11 +44,11 @@ exports.LoadUtils = () => {
         }
         let quotedMsgOptions = {};
         if (options.quotedMessageId) {
-            let quotedMessage = window.Store.Msg.get(options.quotedMessageId);
+            let quotedMessage = await window.Store.Msg.get(options.quotedMessageId);
 
             // TODO remove .canReply() once all clients are updated to >= v2.2241.6
-            const canReply = window.Store.ReplyUtils ? 
-                window.Store.ReplyUtils.canReplyMsg(quotedMessage.unsafe()) : 
+            const canReply = await window.Store.ReplyUtils ? 
+                await window.Store.ReplyUtils.canReplyMsg(quotedMessage.unsafe()) : 
                 quotedMessage.canReply();
 
             if (canReply) {
@@ -141,7 +141,10 @@ exports.LoadUtils = () => {
             }
         }
 
-        if (options.linkPreview) {
+        if (linkPreviewData) {
+            delete options.linkPreview;
+            options = {...options, ...linkPreviewData};
+        } else if (options.linkPreview) {
             delete options.linkPreview;
             const link = window.Store.Validators.findLink(content);
             if (link) {
@@ -205,7 +208,10 @@ exports.LoadUtils = () => {
         }
 
         const meUser = window.Store.User.getMaybeMeUser();
-        const newId = await window.Store.MsgKey.newId();
+        // const newId = await window.Store.MsgKey.newId();
+        if (!newId) {
+            newId = await window.Store.MsgKey.newId();
+        }
         
         const newMsgId = new window.Store.MsgKey({
             from: meUser,
@@ -251,7 +257,7 @@ exports.LoadUtils = () => {
         }
 
         await window.Store.SendMessage.addAndSendMsgToChat(chat, message);
-        return window.Store.Msg.get(newMsgId._serialized);
+        return await window.Store.Msg.get(newMsgId._serialized);
     };
 	
     window.WWebJS.editMessage = async (msg, content, options = {}) => {
@@ -296,7 +302,7 @@ exports.LoadUtils = () => {
         };
 
         await window.Store.EditMessage.sendMessageEdit(msg, content, internalOptions);
-        return window.Store.Msg.get(msg.id._serialized);
+        return await window.Store.Msg.get(msg.id._serialized);
     };
 
     window.WWebJS.toStickerData = async (mediaInfo) => {
@@ -449,7 +455,7 @@ exports.LoadUtils = () => {
         
         res.lastMessage = null;
         if (res.msgs && res.msgs.length) {
-            const lastMessage = chat.lastReceivedKey ? window.Store.Msg.get(chat.lastReceivedKey._serialized) : null;
+            const lastMessage = chat.lastReceivedKey ? await window.Store.Msg.get(chat.lastReceivedKey._serialized) : null;
             if (lastMessage) {
                 res.lastMessage = window.WWebJS.getMessageModel(lastMessage);
             }
@@ -992,7 +998,7 @@ exports.LoadUtils = () => {
     };
 
     window.WWebJS.pinUnpinMsgAction = async (msgId, action, duration) => {
-        const message = window.Store.Msg.get(msgId);
+        const message = await window.Store.Msg.get(msgId);
         if (!message) return false;
         const response = await window.Store.pinUnpinMsg(message, action, duration);
         if (response.messageSendResult === 'OK') return true;

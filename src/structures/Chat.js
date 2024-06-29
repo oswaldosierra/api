@@ -91,7 +91,7 @@ class Chat extends Base {
      * @returns {Promise<Message>} Message that was just sent
      */
     async sendMessage(content, options) {
-        return this.client.sendMessage(this.id._serialized, content, options);
+        return await this.client.sendMessage(this.id._serialized, content, options);
     }
 
     /**
@@ -194,7 +194,8 @@ class Chat extends Base {
             };
 
             const chat = window.Store.Chat.get(chatId);
-            let msgs = chat.msgs.getModelsArray().filter(msgFilter);
+            // let msgs = chat.msgs.getModelsArray().filter(msgFilter);
+            let msgs = chat.getAllMsgs().filter(msgFilter);
 
             if (searchOptions && searchOptions.limit > 0) {
                 while (msgs.length < searchOptions.limit) {
